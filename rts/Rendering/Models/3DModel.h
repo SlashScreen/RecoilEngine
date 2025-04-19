@@ -90,6 +90,7 @@ struct SVertexData {
 	static constexpr std::array<uint8_t, 4> DEFAULT_BONEIDS_HIGH = { 255, 255, 255, 255 };
 	static constexpr std::array<uint8_t, 4> DEFAULT_BONEIDS_LOW  = { 255, 255, 255, 255 };
 	static constexpr std::array<uint8_t, 4> DEFAULT_BONEWEIGHTS  = { 255, 0  ,   0,   0 };
+	static constexpr uint16_t INVALID_BONEID = 0xFFFF;
 
 	void SetBones(const std::vector<std::pair<uint16_t, float>>& bi) {
 		assert(bi.size() == 4);

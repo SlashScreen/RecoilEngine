@@ -1,5 +1,9 @@
 /* This file is part of the Recoil engine (GPL v2 or later), see LICENSE.html */
 
+#include <vector>
+#include <numeric>
+#include <algorithm>
+
 #include "GLTFParser.h"
 #include "3DModel.h"
 #include "3DModelLog.h"
@@ -89,6 +93,7 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 	model.maxs = DEF_MAX_SIZE;
 
 	//textureHandlerS3O.PreloadTexture(&model);
+	//gltf.
 	
 	const auto defaultSceneIdx = gltf.defaultScene.value_or(0);
 	const auto& defaultScene = gltf.scenes[defaultSceneIdx];
@@ -179,6 +184,24 @@ S3DModelPiece* CGLTFParser::AllocPiece()
 	return &piecePool[numPoolPieces++];
 }
 
+namespace Impl {
+	Transform TRStoTransform(const fastgltf::TRS& trs) {
+		assert(float3(trs.scale.x(), trs.scale.y(), trs.scale.z()) == float3(trs.scale.x()));
+		return Transform{
+			CQuaternion{ trs.rotation.x(), trs.rotation.y(), trs.rotation.z(), trs.rotation.w()},
+			float3{ trs.translation.x(), trs.translation.y(), trs.translation.z() },
+			trs.scale.x()
+		};
+	}
+	Transform MatrixToTransform(const fastgltf::math::fmat4x4& matrix) {
+		CMatrix44f mat;
+		memcpy(&mat.m[0], matrix.data(), sizeof(CMatrix44f));
+		auto [t, r, s] = mat.DecomposeIntoTRS();
+		assert(s == float3(s));
+		return Transform{ r, t, s.x };
+	}
+}
+
 S3DModelPiece* CGLTFParser::LoadPiece(S3DModel* model, S3DModelPiece* parentPiece, const fastgltf::Asset& asset, size_t nodeIndex)
 {
 	const auto& node = asset.nodes[nodeIndex];
@@ -193,7 +216,16 @@ S3DModelPiece* CGLTFParser::LoadPiece(S3DModel* model, S3DModelPiece* parentPiec
 	piece->name = node.name;
 	piece->children.reserve(node.children.size());
 
-	//nodeMatrix = getTransformMatrix(node, nodeMatrix);
+	Transform bakedTra = fastgltf::visit_exhaustive(fastgltf::visitor{
+		[&](const fastgltf::math::fmat4x4& matrix) {
+			return Impl::MatrixToTransform(matrix);
+		},
+		[&](const fastgltf::TRS& trs) {
+			return Impl::TRStoTransform(trs);
+		}
+	}, node.transform);
+	
+	piece->SetBakedTransform(bakedTra);
 
 	for (const auto childNodeIndex : node.children) {
 		auto* childPiece = LoadPiece(model, piece, asset, childNodeIndex);
@@ -206,15 +238,20 @@ S3DModelPiece* CGLTFParser::LoadPiece(S3DModel* model, S3DModelPiece* parentPiec
 	auto& verts = piece->GetVerticesVec();
 	auto& indcs = piece->GetIndicesVec();
 	const auto& mesh = asset.meshes[*node.meshIndex];
+
 	for (const auto& prim : mesh.primitives) {
 		const size_t prevVertSize = verts.size();
 		const size_t prevIndcSize = indcs.size();
+
+		std::vector<std::vector<std::pair<uint16_t, float>>> vertexWeights;
+
 		assert(prim.type == fastgltf::PrimitiveType::Triangles);
 		for (const auto* primAttIt = prim.attributes.cbegin(); primAttIt != prim.attributes.cend(); ++primAttIt) {
 			auto& accessor = asset.accessors[primAttIt->accessorIndex];
 
 			if (primAttIt == prim.attributes.cbegin()) {
 				verts.resize(prevVertSize + accessor.count);
+				vertexWeights.resize(accessor.count, std::vector<std::pair<uint16_t, float>>(8, std::make_pair(SVertexData::INVALID_BONEID, 0.0f)));
 			}
 
 			if (!accessor.bufferViewIndex.has_value())
@@ -248,19 +285,76 @@ S3DModelPiece* CGLTFParser::LoadPiece(S3DModel* model, S3DModelPiece* parentPiec
 					verts[prevVertSize + idx].tTangent = verts[prevVertSize + idx].normal.cross(verts[prevVertSize + idx].sTangent).ANormalize();
 				});
 			} break;
+			case hashString("JOINTS_0"): {
+				fastgltf::iterateAccessorWithIndex<fastgltf::math::uvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
+					auto& vertexWeight = vertexWeights[idx];
+					vertexWeight[0].first = static_cast<uint16_t>(val.x());
+					vertexWeight[1].first = static_cast<uint16_t>(val.y());
+					vertexWeight[2].first = static_cast<uint16_t>(val.z());
+					vertexWeight[3].first = static_cast<uint16_t>(val.w());
+				});
+			} break;
+			case hashString("JOINTS_1"): {
+				fastgltf::iterateAccessorWithIndex<fastgltf::math::uvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
+					auto& vertexWeight = vertexWeights[idx];
+					vertexWeight[4].first = static_cast<uint16_t>(val.x());
+					vertexWeight[5].first = static_cast<uint16_t>(val.y());
+					vertexWeight[6].first = static_cast<uint16_t>(val.z());
+					vertexWeight[7].first = static_cast<uint16_t>(val.w());
+				});
+			} break;
+			case hashString("WEIGHTS_0"): {
+				fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
+					auto& vertexWeight = vertexWeights[idx];
+					vertexWeight[0].second = val.x();
+					vertexWeight[1].second = val.y();
+					vertexWeight[2].second = val.z();
+					vertexWeight[3].second = val.w();
+				});
+			} break;
+			case hashString("WEIGHTS_1"): {
+				fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
+					auto& vertexWeight = vertexWeights[idx];
+					vertexWeight[4].second = val.x();
+					vertexWeight[5].second = val.y();
+					vertexWeight[6].second = val.z();
+					vertexWeight[7].second = val.w();
+				});
+			} break;
 			default:
 				break;
 			}
 		}
+
+		for (auto& vertexWeight : vertexWeights) {
+			std::stable_sort(vertexWeight.begin(), vertexWeight.end(), [](const auto& lhs, const auto& rhs) {
+				return std::forward_as_tuple(lhs.second, lhs.first) > std::forward_as_tuple(rhs.second, rhs.first);
+			});
+			vertexWeight.resize(4, std::make_pair(255, 0.0f));
+			for (auto& w : vertexWeight) {
+				if (w.second == 0.0f)
+					w.first = SVertexData::INVALID_BONEID;
+			}
+		}
+
+		for (size_t i = prevVertSize; i < verts.size(); ++i) {
+			verts[i].SetBones(vertexWeights[i - prevVertSize]);
+		}
+
 		assert(prim.indicesAccessor.has_value());
 		auto& accessor = asset.accessors[*prim.indicesAccessor];
 		indcs.resize(prevIndcSize + accessor.count);
 
 		assert(accessor.bufferViewIndex.has_value());
-		fastgltf::iterateAccessorWithIndex<std::uint32_t>(asset, accessor, [&](std::uint32_t index, std::size_t idx) {
+		fastgltf::iterateAccessorWithIndex<uint32_t>(asset, accessor, [&](std::uint32_t index, std::size_t idx) {
 			indcs[idx] = index;
 		});
 	}
+
+	if (node.skinIndex.has_value()) {
+
+	}
+
 	LOG("");
 
 	return piece;

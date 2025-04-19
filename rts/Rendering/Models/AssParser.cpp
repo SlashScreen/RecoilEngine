@@ -364,16 +364,10 @@ namespace Impl {
 			}
 
 			for (auto& vertexWeight : vertexWeights) {
-				std::stable_sort(vertexWeight.begin(), vertexWeight.end(), [](auto&& lhs, auto&& rhs) {
-					if (lhs.second > rhs.second) return true;
-					if (rhs.second > lhs.second) return false;
-
-					if (lhs.first > rhs.first) return true;
-					if (rhs.first > lhs.first) return false;
-
-					return false;
-					});
-				vertexWeight.resize(4, std::make_pair(255, 0.0f));
+				std::stable_sort(vertexWeight.begin(), vertexWeight.end(), [](const auto& lhs, const auto& rhs) {
+					return std::forward_as_tuple(lhs.second, lhs.first) > std::forward_as_tuple(rhs.second, rhs.first);
+				});
+				vertexWeight.resize(4, std::make_pair(SVertexData::INVALID_BONEID, 0.0f));
 			}
 
 			// extract vertex data per mesh
