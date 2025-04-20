@@ -40,7 +40,7 @@ namespace Impl {
 	}
 
 	template<typename PrimContainer>
-	void ReadGeometryData(const fastgltf::Asset& asset, const PrimContainer& primitives, std::vector<SVertexData>& verts, std::vector<uint32_t>& indcs) {
+	void ReadGeometryData(const fastgltf::Asset& asset, const PrimContainer& primitives, std::vector<SVertexData>& verts, std::vector<uint32_t>& indcs, const fastgltf::Skin* skinPtr = nullptr) {
 			for (const auto& prim : primitives) {
 			const size_t prevVertSize = verts.size();
 			const size_t prevIndcSize = indcs.size();
@@ -88,21 +88,23 @@ namespace Impl {
 					});
 				} break;
 				case hashString("JOINTS_0"): {
+					assert(skinPtr);
 					fastgltf::iterateAccessorWithIndex<fastgltf::math::uvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
 						auto& vertexWeight = vertexWeights[idx];
-						vertexWeight[0].first = static_cast<uint16_t>(val.x());
-						vertexWeight[1].first = static_cast<uint16_t>(val.y());
-						vertexWeight[2].first = static_cast<uint16_t>(val.z());
-						vertexWeight[3].first = static_cast<uint16_t>(val.w());
+						vertexWeight[0].first = static_cast<uint16_t>(skinPtr->joints[val.x()]);
+						vertexWeight[1].first = static_cast<uint16_t>(skinPtr->joints[val.y()]);
+						vertexWeight[2].first = static_cast<uint16_t>(skinPtr->joints[val.z()]);
+						vertexWeight[3].first = static_cast<uint16_t>(skinPtr->joints[val.w()]);
 					});
 				} break;
 				case hashString("JOINTS_1"): {
+					assert(skinPtr);
 					fastgltf::iterateAccessorWithIndex<fastgltf::math::uvec4>(asset, accessor, [&](const auto& val, std::size_t idx) {
 						auto& vertexWeight = vertexWeights[idx];
-						vertexWeight[4].first = static_cast<uint16_t>(val.x());
-						vertexWeight[5].first = static_cast<uint16_t>(val.y());
-						vertexWeight[6].first = static_cast<uint16_t>(val.z());
-						vertexWeight[7].first = static_cast<uint16_t>(val.w());
+						vertexWeight[4].first = static_cast<uint16_t>(skinPtr->joints[val.x()]);
+						vertexWeight[5].first = static_cast<uint16_t>(skinPtr->joints[val.y()]);
+						vertexWeight[6].first = static_cast<uint16_t>(skinPtr->joints[val.z()]);
+						vertexWeight[7].first = static_cast<uint16_t>(skinPtr->joints[val.w()]);
 					});
 				} break;
 				case hashString("WEIGHTS_0"): {
@@ -283,9 +285,11 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 		if (!node.skinIndex.has_value())
 			continue;
 
+		const auto& skin = asset.skins[*node.skinIndex];
 		const auto& mesh = asset.meshes[*node.meshIndex];
 		auto& skinnedMesh = allSkinnedMeshes.emplace_back();
-		Impl::ReadGeometryData(asset, mesh.primitives, skinnedMesh.verts, skinnedMesh.indcs);
+
+		Impl::ReadGeometryData(asset, mesh.primitives, skinnedMesh.verts, skinnedMesh.indcs, &skin);
 		Impl::ReplaceNodeIndexWithPieceIndex(skinnedMesh.verts, nodeIdxToPieceIdx);
 	}
 
