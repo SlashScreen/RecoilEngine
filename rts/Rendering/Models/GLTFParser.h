@@ -12,9 +12,12 @@ namespace fastgltf {
 	class Asset;
 }
 
+struct Transform;
+
 class GLTFPiece : public S3DModelPiece {
 public:
-	size_t nodeIndex = size_t(-1);
+	static constexpr size_t INVALID_NODE_INDEX = size_t(-1);
+	size_t nodeIndex = INVALID_NODE_INDEX;
 };
 
 class CGLTFParser: public IModelParser
@@ -26,7 +29,10 @@ public:
 	void Load(S3DModel& model, const std::string& name) override;
 private:
 	GLTFPiece* AllocPiece();
+	GLTFPiece* AllocRootEmptyPiece(S3DModel* model, const Transform& parentTransform, const fastgltf::Asset& asset, size_t sceneIndex);
 	GLTFPiece* LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const fastgltf::Asset& asset, size_t nodeIndex);
+
+	void FindTextures(S3DModel* model, const fastgltf::Asset& asset, const LuaTable& modelTable);
 
 	std::vector<GLTFPiece> piecePool;
 	spring::mutex poolMutex;

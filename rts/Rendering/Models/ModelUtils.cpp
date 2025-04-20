@@ -1,9 +1,12 @@
-#include "SkinningUtils.h"
+#include "ModelUtils.h"
 
 #include <cassert>
+#include <string>
 #include <numeric>
 
+#include "3DModelLog.h"
 #include "System/Misc/TracyDefs.h"
+#include "lua/LuaParser.h"
 
 using namespace Skinning;
 
@@ -202,4 +205,52 @@ void Skinning::ReparentCompleteMeshesToBones(S3DModel* model, const std::vector<
 			vert.tTangent = (invTra * float4{ vert.tTangent, 0.0f }).xyz;
 		}
 	}
+}
+
+void ModelUtils::CalculateModelDimensions(S3DModel* model, S3DModelPiece* piece)
+{
+	// TODO fix
+	const CMatrix44f scaleRotMat = piece->ComposeTransform(ZeroVector, ZeroVector, piece->scale).ToMatrix();
+
+	// cannot set this until parent relations are known, so either here or in BuildPieceHierarchy()
+	piece->goffset = scaleRotMat.Mul(piece->offset) + ((piece->parent != nullptr) ? piece->parent->goffset : ZeroVector);
+
+	// update model min/max extents
+	model->mins = float3::min(piece->goffset + piece->mins, model->mins);
+	model->maxs = float3::max(piece->goffset + piece->maxs, model->maxs);
+
+	piece->SetCollisionVolume(CollisionVolume('b', 'z', piece->maxs - piece->mins, (piece->maxs + piece->mins) * 0.5f));
+
+	// Repeat with children
+	for (S3DModelPiece* childPiece : piece->children) {
+		CalculateModelDimensions(model, childPiece);
+	}
+}
+
+void ModelUtils::CalculateModelProperties(S3DModel* model, const LuaTable& modelTable)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	model->UpdatePiecesMinMaxExtents();
+
+	CalculateModelDimensions(model, model->GetRootPiece());
+
+	model->mins = modelTable.GetFloat3("mins", model->mins);
+	model->maxs = modelTable.GetFloat3("maxs", model->maxs);
+
+	model->radius = modelTable.GetFloat("radius", model->CalcDrawRadius());
+	model->height = modelTable.GetFloat("height", model->CalcDrawHeight());
+
+	model->relMidPos = modelTable.GetFloat3("midpos", model->CalcDrawMidPos());
+}
+
+void ModelLog::LogModelProperties(const S3DModel& model)
+{
+	// Verbose logging of model properties
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->name: %s", model.name.c_str());
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->numobjects: %d", model.numPieces);
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->radius: %f", model.radius);
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->height: %f", model.height);
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->mins: (%f,%f,%f)", model.mins[0], model.mins[1], model.mins[2]);
+	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->maxs: (%f,%f,%f)", model.maxs[0], model.maxs[1], model.maxs[2]);
+	LOG_SL(LOG_SECTION_MODEL, L_INFO, "Model %s Imported.", model.name.c_str());
 }

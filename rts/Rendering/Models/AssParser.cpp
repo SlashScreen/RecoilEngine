@@ -3,7 +3,7 @@
 #include "AssParser.h"
 #include "3DModel.h"
 #include "3DModelLog.h"
-#include "SkinningUtils.h"
+#include "ModelUtils.h"
 #include "AssIO.h"
 
 #include "Lua/LuaParser.h"
@@ -153,6 +153,7 @@ struct SPseudoAssPiece {
 
 	// copy of S3DModelPiece::SetBakedTransform()
 	void SetBakedTransform(const Transform& tra) {
+		bakedTransform = tra;
 		hasBakedTra = !tra.IsIdentity();
 	}
 
@@ -637,17 +638,9 @@ void CAssParser::Load(S3DModel& model, const std::string& modelFilePath)
 			Skinning::ReparentMeshesTrianglesToBones(&model, meshes);
 	}
 
-	UpdatePiecesMinMaxExtents(&model);
-	CalculateModelProperties(&model, modelTable);
+	ModelUtils::CalculateModelProperties(&model, modelTable);
 
-	// Verbose logging of model properties
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->name: %s", model.name.c_str());
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->numobjects: %d", model.numPieces);
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->radius: %f", model.radius);
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->height: %f", model.height);
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->mins: (%f,%f,%f)", model.mins[0], model.mins[1], model.mins[2]);
-	LOG_SL(LOG_SECTION_MODEL, L_DEBUG, "model->maxs: (%f,%f,%f)", model.maxs[0], model.maxs[1], model.maxs[2]);
-	LOG_SL(LOG_SECTION_MODEL, L_INFO, "Model %s Imported.", model.name.c_str());
+	ModelLog::LogModelProperties(model);
 }
 
 
@@ -745,17 +738,6 @@ void CAssParser::LoadPieceTransformations(
 ) {
 	RECOIL_DETAILED_TRACY_ZONE;
 	Impl::LoadPieceTransformations<SPseudoAssPiece>(piece, model, pieceNode, pieceTable);
-}
-
-void CAssParser::UpdatePiecesMinMaxExtents(S3DModel* model)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	for (auto* piece : model->pieceObjects) {
-		for (const auto& vertex : piece->vertices) {
-			piece->mins = float3::min(piece->mins, vertex.pos);
-			piece->maxs = float3::max(piece->maxs, vertex.pos);
-		}
-	}
 }
 
 void CAssParser::SetPieceName(
@@ -1088,44 +1070,6 @@ void CAssParser::BuildPieceHierarchy(S3DModel* model, ModelPieceMap& pieceMap, c
 
 	model->FlattenPieceTree(model->GetRootPiece());
 }
-
-
-// Iterate over the model and calculate its overall dimensions
-void CAssParser::CalculateModelDimensions(S3DModel* model, S3DModelPiece* piece)
-{
-	// TODO fix
-	const CMatrix44f scaleRotMat = piece->ComposeTransform(ZeroVector, ZeroVector, piece->scale).ToMatrix();
-
-	// cannot set this until parent relations are known, so either here or in BuildPieceHierarchy()
-	piece->goffset = scaleRotMat.Mul(piece->offset) + ((piece->parent != nullptr)? piece->parent->goffset: ZeroVector);
-
-	// update model min/max extents
-	model->mins = float3::min(piece->goffset + piece->mins, model->mins);
-	model->maxs = float3::max(piece->goffset + piece->maxs, model->maxs);
-
-	piece->SetCollisionVolume(CollisionVolume('b', 'z', piece->maxs - piece->mins, (piece->maxs + piece->mins) * 0.5f));
-
-	// Repeat with children
-	for (S3DModelPiece* childPiece: piece->children) {
-		CalculateModelDimensions(model, childPiece);
-	}
-}
-
-// Calculate model radius from the min/max extents
-void CAssParser::CalculateModelProperties(S3DModel* model, const LuaTable& modelTable)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	CalculateModelDimensions(model, model->pieceObjects[0]);
-
-	model->mins = modelTable.GetFloat3("mins", model->mins);
-	model->maxs = modelTable.GetFloat3("maxs", model->maxs);
-
-	model->radius = modelTable.GetFloat("radius", model->CalcDrawRadius());
-	model->height = modelTable.GetFloat("height", model->CalcDrawHeight());
-
-	model->relMidPos = modelTable.GetFloat3("midpos", model->CalcDrawMidPos());
-}
-
 
 static std::string FindTexture(std::string testTextureFile, const std::string& modelPath, const std::string& fallback)
 {

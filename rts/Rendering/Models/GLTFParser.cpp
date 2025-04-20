@@ -7,7 +7,7 @@
 #include "GLTFParser.h"
 #include "3DModel.h"
 #include "3DModelLog.h"
-#include "SkinningUtils.h"
+#include "ModelUtils.h"
 
 #include "Rendering/Textures/S3OTextureHandler.h"
 #include "System/FileSystem/FileHandler.h"
@@ -15,6 +15,7 @@
 #include "System/Misc/TracyDefs.h"
 #include "System/Exceptions.h"
 #include "System/UnorderedSet.hpp"
+#include "Lua/LuaParser.h"
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
@@ -226,35 +227,49 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 		throw content_error("Error loading GLTF file " + modelFilePath);
 	}
 
+	// load the lua metafile containing properties unique to Spring models (must return a table)
+	std::string metaFileName = modelFilePath + ".lua";
+
+	// try again without the model file extension
+	if (!CFileHandler::FileExists(metaFileName, SPRING_VFS_ZIP))
+		metaFileName = modelPath + modelName + ".lua";
+	if (!CFileHandler::FileExists(metaFileName, SPRING_VFS_ZIP))
+		LOG_SL(LOG_SECTION_MODEL, L_INFO, "No meta-file '%s'. Using defaults.", metaFileName.c_str());
+
+	LuaParser metaFileParser(metaFileName, SPRING_VFS_ZIP, SPRING_VFS_ZIP);
+
+	if (!metaFileParser.Execute())
+		LOG_SL(LOG_SECTION_MODEL, L_INFO, "'%s': %s. Using defaults.", metaFileName.c_str(), metaFileParser.GetErrorLog().c_str());
+
+	// get the (root-level) model table
+	const LuaTable& modelTable = metaFileParser.GetRoot();
+
+	if (!modelTable.IsValid())
+		LOG_SL(LOG_SECTION_MODEL, L_INFO, "No valid model metadata in '%s' or no meta-file", metaFileName.c_str());
+
+	// Load textures
+	FindTextures(&model, asset, modelTable);
+	LOG_SL(LOG_SECTION_MODEL, L_INFO, "Loading textures. Tex1: '%s' Tex2: '%s'", model.texs[0].c_str(), model.texs[1].c_str());
+
+	textureHandlerS3O.PreloadTexture(&model, modelTable.GetBool("fliptextures", true), modelTable.GetBool("invertteamcolor", true));
+
 	model.name = modelFilePath;
 	model.type = MODELTYPE_ASS; // Revise?
 	model.numPieces = 0;
-	model.texs[0] = "";//(header.texture1 == 0) ? "" : (char*)&fileBuf[header.texture1];
-	model.texs[1] = "";//(header.texture2 == 0) ? "" : (char*)&fileBuf[header.texture2];
 	model.mins = DEF_MIN_SIZE;
 	model.maxs = DEF_MAX_SIZE;
 
-	//textureHandlerS3O.PreloadTexture(&model);
-	//gltf.
-	//std::vector<std::pair<SVertexData, uint32_t>> allMeshes
-	/*
-
-	*/
-
-
-
-
-	//std::vector<std::pair<SVertexData, uint32_t>> allMeshes
-	
 	const auto defaultSceneIdx = asset.defaultScene.value_or(0);
-	const auto& defaultScene = asset.scenes[defaultSceneIdx];
-	auto* rootPiece = LoadPiece(&model, nullptr, asset, defaultScene.nodeIndices.front());
-	rootPiece->SetPieceTransform(Transform{});
+	auto* rootPiece = AllocRootEmptyPiece(&model, Transform{}, asset, defaultSceneIdx);
 	model.FlattenPieceTree(rootPiece);
+	model.SetPieceMatrices();
 
 	spring::unordered_map<size_t, size_t> nodeIdxToPieceIdx;
 	for (size_t pi = 0; pi < model.pieceObjects.size(); ++pi) {
 		const auto* piece = static_cast<const GLTFPiece*>(model.pieceObjects[pi]);
+		if (piece->nodeIndex == GLTFPiece::INVALID_NODE_INDEX)
+			continue;
+
 		nodeIdxToPieceIdx[piece->nodeIndex] = pi;
 	}
 
@@ -280,7 +295,6 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 			allBones.emplace(skin.joints[ji]);
 		}
 	}
-	LOG("");
 
 	// if numMeshes >= numBones reparent the whole meshes
 	// else reparent meshes per-triangle
@@ -289,11 +303,9 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 	else
 		Skinning::ReparentMeshesTrianglesToBones(&model, allSkinnedMeshes);
 
-	// set after the extrema are known
-	//model.radius = (header.radius <= 0.01f) ? model.CalcDrawRadius() : header.radius;
-	//model.height = (header.height <= 0.01f) ? model.CalcDrawHeight() : header.height;
-	//model.relMidPos = float3(header.midx, header.midy, header.midz);
+	ModelUtils::CalculateModelProperties(&model, modelTable);
 
+	ModelLog::LogModelProperties(model);
 }
 
 GLTFPiece* CGLTFParser::AllocPiece()
@@ -315,6 +327,37 @@ GLTFPiece* CGLTFParser::AllocPiece()
 	return &piecePool[numPoolPieces++];
 }
 
+GLTFPiece* CGLTFParser::AllocRootEmptyPiece(S3DModel* model, const Transform& parentTransform, const fastgltf::Asset& asset, size_t sceneIndex)
+{
+	const auto& scene = asset.scenes[sceneIndex];
+
+	auto* piece = AllocPiece();
+	model->numPieces++;
+
+	piece->SetParentModel(model);
+
+	auto bakedTransform = parentTransform;
+	// only rotation is allowed because of Spring-isms
+	bakedTransform.t = float3{};
+	bakedTransform.s = 1.0f;
+	piece->SetBakedTransform(bakedTransform);
+	piece->offset = parentTransform.t;
+	piece->scale = parentTransform.s;
+
+
+	piece->parent = nullptr;
+	piece->name = scene.name;
+	piece->children.reserve(scene.nodeIndices.size());
+
+	for (const auto childNodeIndex : scene.nodeIndices) {
+		auto* childPiece = LoadPiece(model, piece, asset, childNodeIndex);
+		if (childPiece)
+			piece->children.push_back(childPiece);
+	}
+
+	return piece;
+}
+
 
 GLTFPiece* CGLTFParser::LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const fastgltf::Asset& asset, size_t nodeIndex)
 {
@@ -333,7 +376,7 @@ GLTFPiece* CGLTFParser::LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const
 	piece->children.reserve(node.children.size());
 	piece->nodeIndex = nodeIndex;
 
-	Transform bakedTra = fastgltf::visit_exhaustive(fastgltf::visitor{
+	Transform pieceTransform = fastgltf::visit_exhaustive(fastgltf::visitor{
 		[&](const fastgltf::math::fmat4x4& matrix) {
 			return Impl::MatrixToTransform(matrix);
 		},
@@ -342,10 +385,15 @@ GLTFPiece* CGLTFParser::LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const
 		}
 	}, node.transform);
 	
-	piece->SetBakedTransform(bakedTra);
-	piece->offset = piece->bakedTransform.t;
-	piece->goffset = piece->offset + ((parentPiece != nullptr) ? parentPiece->goffset : ZeroVector);
+	auto bakedTransform = pieceTransform;
+	// by idiotic Spring convention bakedTransform should only contain rotation
+	bakedTransform.t = float3{};
+	bakedTransform.s = 1.0f;
 
+	piece->SetBakedTransform(bakedTransform);
+	piece->offset = pieceTransform.t;
+	piece->scale = pieceTransform.s;
+	piece->goffset = piece->offset + ((parentPiece != nullptr) ? parentPiece->goffset : ZeroVector);
 
 	for (const auto childNodeIndex : node.children) {
 		auto* childPiece = LoadPiece(model, piece, asset, childNodeIndex);
@@ -362,4 +410,15 @@ GLTFPiece* CGLTFParser::LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const
 	Impl::ReadGeometryData(asset, mesh.primitives, verts, indcs);
 
 	return piece;
+}
+
+void CGLTFParser::FindTextures(S3DModel* model, const fastgltf::Asset& asset, const LuaTable& modelTable)
+{
+	for (int i = 0; i < 2; ++i) {
+		const auto fullPath = "unittextures/" + modelTable.GetString(IntToString(i + 1, "tex%i"), "");
+		if (CFileHandler::FileExists(fullPath, SPRING_VFS_ZIP_FIRST))
+			model->texs[i] = fullPath;
+	}
+
+	// TODO parse asset?
 }

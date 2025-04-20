@@ -350,30 +350,9 @@ struct S3DModel
 
 	void SetPieceMatrices();
 
-	void FlattenPieceTree(S3DModelPiece* root) {
-		assert(root != nullptr);
+	void FlattenPieceTree(S3DModelPiece* root);
 
-		pieceObjects.clear();
-		pieceObjects.reserve(numPieces);
-
-		// force mutex just in case this is called from modelLoader.ProcessVertices()
-		// TODO: pass to S3DModel if it is created from LoadModel(ST) or from ProcessVertices(MT)
-		traAlloc = ScopedTransformMemAlloc(numPieces);
-
-		std::vector<S3DModelPiece*> stack = { root };
-
-		while (!stack.empty()) {
-			S3DModelPiece* p = stack.back();
-
-			stack.pop_back();
-			pieceObjects.push_back(p);
-
-			// add children in reverse for the correct DF traversal order
-			for (size_t n = 0; n < p->children.size(); n++) {
-				stack.push_back(p->children[p->children.size() - n - 1]);
-			}
-		}
-	}
+	void UpdatePiecesMinMaxExtents();
 
 	// default values set by parsers; radius is also cached in WorldObject::drawRadius (used by projectiles)
 	float CalcDrawRadius() const { return ((maxs - mins).Length() * 0.5f); }

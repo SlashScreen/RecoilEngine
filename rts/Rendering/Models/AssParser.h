@@ -55,7 +55,6 @@ public:
 private:
 	static void PreProcessFileBuffer(std::vector<unsigned char>& fileBuffer);
 
-	static void UpdatePiecesMinMaxExtents(S3DModel* model);
 	static void SetPieceName(
 		SAssPiece* piece,
 		const S3DModel* model,
@@ -100,8 +99,6 @@ private:
 	);
 
 	static void BuildPieceHierarchy(S3DModel* model, ModelPieceMap& pieceMap, const ParentNameMap& parentMap);
-	static void CalculateModelDimensions(S3DModel* model, S3DModelPiece* piece);
-	static void CalculateModelProperties(S3DModel* model, const LuaTable& pieceTable);
 	static void FindTextures(
 		S3DModel* model,
 		const aiScene* scene,
