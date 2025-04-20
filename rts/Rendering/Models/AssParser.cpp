@@ -3,6 +3,7 @@
 #include "AssParser.h"
 #include "3DModel.h"
 #include "3DModelLog.h"
+#include "SkinningUtils.h"
 #include "AssIO.h"
 
 #include "Lua/LuaParser.h"
@@ -146,7 +147,6 @@ struct SPseudoAssPiece {
 	Transform bakedTransform;    /// baked local-space rotations
 
 	float3 offset;     /// local (piece-space) offset wrt. parent piece
-	float3 goffset;    /// global (model-space) offset wrt. root piece
 	float scale{1.0f}; /// baked uniform scaling factor (assimp-only)
 
 	bool hasBakedTra;
@@ -315,20 +315,17 @@ namespace Impl {
 		return meshBoneTransform;
 	}
 
-	std::vector<CAssParser::MeshData> GetModelSpaceMeshes(const aiScene* scene, const S3DModel* model, const std::vector<Transform>& meshBoneTransforms)
+	std::vector<Skinning::SkinnedMesh> GetModelSpaceMeshes(const aiScene* scene, const S3DModel* model, const std::vector<Transform>& meshBoneTransforms)
 	{
 		RECOIL_DETAILED_TRACY_ZONE;
 		std::vector<uint32_t> meshVertexMapping;
-		std::vector<CAssParser::MeshData> meshes;
+		std::vector<Skinning::SkinnedMesh> meshes;
 
 		for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
+			auto& [verts, indcs] = meshes.emplace_back();
+
 			const aiMesh* mesh = scene->mMeshes[meshIndex];
-
 			const auto& boneTra = meshBoneTransforms[meshIndex];
-
-			std::vector<SVertexData> verts;
-			std::vector<uint32_t   > indcs;
-			uint32_t numUVs = 0;
 
 			LOG_SL(LOG_SECTION_PIECE, L_DEBUG, "Fetching mesh %d from scene", meshIndex);
 			LOG_SL(LOG_SECTION_PIECE, L_DEBUG,
@@ -427,8 +424,6 @@ namespace Impl {
 					if (!mesh->HasTextureCoords(uvChanIndex))
 						break;
 
-					numUVs = uvChanIndex + 1;
-
 					vertex.texCoords[uvChanIndex].x = mesh->mTextureCoords[uvChanIndex][vertexIndex].x;
 					vertex.texCoords[uvChanIndex].y = mesh->mTextureCoords[uvChanIndex][vertexIndex].y;
 				}
@@ -466,8 +461,6 @@ namespace Impl {
 					indcs.push_back(vertexDrawIdx);
 				}
 			}
-
-			meshes.emplace_back(verts, indcs, numUVs);
 		}
 
 		return meshes;
@@ -639,9 +632,9 @@ void CAssParser::Load(S3DModel& model, const std::string& modelFilePath)
 		// if numMeshes >= numBones reparent the whole meshes
 		// else reparent meshes per-triangle
 		if (meshNames.size() >= boneNames.size())
-			ReparentCompleteMeshesToBones(&model, meshes);
+			Skinning::ReparentCompleteMeshesToBones(&model, meshes);
 		else
-			ReparentMeshesTrianglesToBones(&model, meshes);
+			Skinning::ReparentMeshesTrianglesToBones(&model, meshes);
 	}
 
 	UpdatePiecesMinMaxExtents(&model);
@@ -909,8 +902,6 @@ void CAssParser::LoadPieceGeometry(SAssPiece* piece, const S3DModel* model, cons
 				if (!mesh->HasTextureCoords(uvChanIndex))
 					break;
 
-				piece->SetNumTexCoorChannels(uvChanIndex + 1);
-
 				vertex.texCoords[uvChanIndex].x = mesh->mTextureCoords[uvChanIndex][vertexIndex].x;
 				vertex.texCoords[uvChanIndex].y = mesh->mTextureCoords[uvChanIndex][vertexIndex].y;
 			}
@@ -942,199 +933,6 @@ void CAssParser::LoadPieceGeometry(SAssPiece* piece, const S3DModel* model, cons
 				const unsigned int vertexDrawIdx = meshVertexMapping[vertexFaceIdx];
 				piece->indices.push_back(vertexDrawIdx);
 			}
-		}
-	}
-}
-
-void CAssParser::ReparentMeshesTrianglesToBones(S3DModel* model, const std::vector<CAssParser::MeshData>& meshes)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-
-	auto GetBoneID = [](const SVertexData& vert, size_t wi) {
-		return vert.boneIDsLow[wi] | (vert.boneIDsHigh[wi] << 8);
-	};
-
-	for (const auto& [verts, indcs, numUVs] : meshes) {
-		for (size_t trID = 0; trID < indcs.size() / 3; ++trID) {
-			std::array<uint32_t, 256> boneWeights = { 0 };
-
-			for (size_t vi = 0; vi < 3; ++vi) {
-				const auto& vert = verts[indcs[trID * 3 + vi]];
-
-				for (size_t wi = 0; wi < 4; ++wi) {
-					boneWeights[GetBoneID(vert, wi)] += vert.boneWeights[wi];
-				}
-			}
-
-			const auto maxWeightedBoneID = std::distance(
-				boneWeights.begin(),
-				std::max_element(boneWeights.begin(), boneWeights.end())
-			);
-			assert(maxWeightedBoneID < INV_PIECE_NUM); // INV_PIECE_NUM - invalid bone
-
-			auto* maxWeightedPiece = static_cast<SAssPiece*>(model->pieceObjects[maxWeightedBoneID]);
-			maxWeightedPiece->SetNumTexCoorChannels(std::max(maxWeightedPiece->GetNumTexCoorChannels(), numUVs));
-
-			auto& pieceVerts = maxWeightedPiece->vertices;
-			auto& pieceIndcs = maxWeightedPiece->indices;
-
-			for (size_t vi = 0; vi < 3; ++vi) {
-				auto  targVert = verts[indcs[trID * 3 + vi]]; //copy
-
-				// find if targVert is already added
-				auto itTargVec = std::find_if(pieceVerts.begin(), pieceVerts.end(), [&targVert](const auto& vert) {
-					return targVert.pos.equals(vert.pos) && targVert.normal.equals(vert.normal);
-				});
-
-				// new vertex
-				if (itTargVec == pieceVerts.end()) {
-					// make sure maxWeightedBoneID comes first. It's a must, even if it doesn't exist in targVert.boneIDs!
-					const auto boneID0 = GetBoneID(targVert, 0);
-					if (boneID0 != maxWeightedBoneID) {
-						size_t itPos = 0;
-						for (size_t jj = 1; jj < targVert.boneIDsLow.size(); ++jj) {
-							if (GetBoneID(targVert, jj) == maxWeightedBoneID) {
-								itPos = jj;
-								break;
-							}
-						}
-						if (itPos != 0) {
-							// swap maxWeightedBoneID so it comes first in the boneIDs array
-							std::swap(targVert.boneIDsLow[0], targVert.boneIDsLow[itPos]);
-							std::swap(targVert.boneWeights[0], targVert.boneWeights[itPos]);
-							std::swap(targVert.boneIDsHigh[0], targVert.boneIDsHigh[itPos]);
-						}
-						else {
-							// maxWeightedBoneID doesn't even exist in this targVert
-							// replace the bone with the least weight with maxWeightedBoneID and swap it be first
-							targVert.boneIDsLow[3]  = static_cast<uint8_t>((maxWeightedBoneID     ) & 0xFF);
-							targVert.boneWeights[3] = 0;
-							targVert.boneIDsHigh[3] = static_cast<uint8_t>((maxWeightedBoneID >> 8) & 0xFF);
-							std::swap(targVert.boneIDsLow[0], targVert.boneIDsLow[3]);
-							std::swap(targVert.boneWeights[0], targVert.boneWeights[3]);
-							std::swap(targVert.boneIDsHigh[0], targVert.boneIDsHigh[3]);
-
-							// renormalize weights (optional but nice for debugging)
-							const float sumWeights = static_cast<float>(std::reduce(targVert.boneWeights.begin(), targVert.boneWeights.end())) / 255.0;
-							for (auto& bw : targVert.boneWeights) {
-								bw = static_cast<uint8_t>(math::round(static_cast<float>(bw) / 255.0f / sumWeights));
-							}
-						}
-					}
-
-					pieceIndcs.emplace_back(static_cast<uint32_t>(pieceVerts.size()));
-					pieceVerts.emplace_back(std::move(targVert));
-				}
-				else {
-					pieceIndcs.emplace_back(static_cast<uint32_t>(std::distance(
-						pieceVerts.begin(),
-						itTargVec
-					)));
-				}
-			}
-		}
-	}
-
-	// transform model space mesh vertices into bone/piece space
-	for (auto* piece : model->pieceObjects) {
-		if (!piece->HasGeometryData())
-			continue;
-
-		const auto invMat = piece->bposeTransform.ToMatrix().InvertAffine();
-		for (auto& vert : piece->vertices) {
-			vert.pos      = (invMat * float4{ vert.pos     , 1.0f }).xyz;
-			vert.normal   = (invMat * float4{ vert.normal  , 0.0f }).xyz;
-			vert.sTangent = (invMat * float4{ vert.sTangent, 0.0f }).xyz;
-			vert.tTangent = (invMat * float4{ vert.tTangent, 0.0f }).xyz;
-		}
-	}
-}
-
-void CAssParser::ReparentCompleteMeshesToBones(S3DModel* model, const std::vector<CAssParser::MeshData>& meshes)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-
-	auto GetBoneID = [](const SVertexData& vert, size_t wi) {
-		return vert.boneIDsLow[wi] | (vert.boneIDsHigh[wi] << 8);
-	};
-
-	for (const auto& [verts, indcs, numUVs] : meshes) {
-		std::array<uint32_t, 256> boneWeights = { 0 };
-		for (const auto& vert : verts) {
-			for (size_t wi = 0; wi < 4; ++wi) {
-				boneWeights[GetBoneID(vert, wi)] += vert.boneWeights[wi];
-			}
-		}
-		const auto maxWeightedBoneID = std::distance(
-			boneWeights.begin(),
-			std::max_element(boneWeights.begin(), boneWeights.end())
-		);
-		assert(maxWeightedBoneID < 255); // 255 - invalid bone
-
-		auto* maxWeightedPiece = static_cast<SAssPiece*>(model->pieceObjects[maxWeightedBoneID]);
-		maxWeightedPiece->SetNumTexCoorChannels(std::max(maxWeightedPiece->GetNumTexCoorChannels(), numUVs));
-
-		auto& pieceVerts = maxWeightedPiece->vertices;
-		auto& pieceIndcs = maxWeightedPiece->indices;
-		const auto indexOffset = static_cast<uint32_t>(pieceVerts.size());
-
-		for (auto targVert : verts) { // deliberate copy
-			// Unlike ReparentMeshesTrianglesToBones() do not check for already existing vertices
-			// Just copy mesh as is. Modelers and assimp should have done necessary dedup for us.
-
-			// make sure maxWeightedBoneID comes first. It's a must, even if it doesn't exist in targVert.boneIDs!
-			const auto boneID0 = GetBoneID(targVert, 0);
-			if (boneID0 != maxWeightedBoneID) {
-				size_t itPos = 0;
-				for (size_t jj = 1; jj < targVert.boneIDsLow.size(); ++jj) {
-					if (GetBoneID(targVert, jj) == maxWeightedBoneID) {
-						itPos = jj;
-						break;
-					}
-				}
-				if (itPos != 0) {
-					// swap maxWeightedBoneID so it comes first in the boneIDs array
-					std::swap(targVert.boneIDsLow[0], targVert.boneIDsLow[itPos]);
-					std::swap(targVert.boneWeights[0], targVert.boneWeights[itPos]);
-					std::swap(targVert.boneIDsHigh[0], targVert.boneIDsHigh[itPos]);
-				}
-				else {
-					// maxWeightedBoneID doesn't even exist in this targVert
-					// replace the bone with the least weight with maxWeightedBoneID and swap it be first
-					targVert.boneIDsLow[3] = static_cast<uint8_t>((maxWeightedBoneID) & 0xFF);
-					targVert.boneWeights[3] = 0;
-					targVert.boneIDsHigh[3] = static_cast<uint8_t>((maxWeightedBoneID >> 8) & 0xFF);
-					std::swap(targVert.boneIDsLow[0], targVert.boneIDsLow[3]);
-					std::swap(targVert.boneWeights[0], targVert.boneWeights[3]);
-					std::swap(targVert.boneIDsHigh[0], targVert.boneIDsHigh[3]);
-
-					// renormalize weights (optional but nice for debugging)
-					const float sumWeights = static_cast<float>(std::reduce(targVert.boneWeights.begin(), targVert.boneWeights.end())) / 255.0;
-					for (auto& bw : targVert.boneWeights) {
-						bw = static_cast<uint8_t>(math::round(static_cast<float>(bw) / 255.0f / sumWeights));
-					}
-				}
-			}
-
-			pieceVerts.emplace_back(std::move(targVert));
-		}
-
-		for (const auto indx : indcs) {
-			pieceIndcs.emplace_back(indexOffset + indx);
-		}
-	}
-
-	// transform model space mesh vertices into bone/piece space
-	for (auto* piece : model->pieceObjects) {
-		if (!piece->HasGeometryData())
-			continue;
-
-		const auto invMat = piece->bposeTransform.ToMatrix().InvertAffine();
-		for (auto& vert : piece->vertices) {
-			vert.pos      = (invMat * float4{ vert.pos     , 1.0f }).xyz;
-			vert.normal   = (invMat * float4{ vert.normal  , 0.0f }).xyz;
-			vert.sTangent = (invMat * float4{ vert.sTangent, 0.0f }).xyz;
-			vert.tTangent = (invMat * float4{ vert.tTangent, 0.0f }).xyz;
 		}
 	}
 }
