@@ -250,6 +250,12 @@ if    (SYNCCHECK)
 	add_definitions(-DSYNCCHECK)
 endif (SYNCCHECK)
 
+option(SYNC_HISTORY "Save sync history (for semidebug builds)" FALSE)
+set(SYNC_HISTORY ON CACHE BOOL "Force enable save sync history" FORCE)
+if    (SYNC_HISTORY)
+	add_definitions(-DSYNC_HISTORY)
+endif (SYNC_HISTORY)
+
 option(NO_CREG "Disable creg support" FALSE)
 if    (NO_CREG)
 	add_definitions(-DNOT_USING_CREG)
