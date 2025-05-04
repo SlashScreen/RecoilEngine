@@ -75,7 +75,7 @@ namespace Rml::SolLua
 		{
 			return Rml::RegisterEventType(type, interruptible, bubbles, Rml::DefaultActionPhase::None);
 		}
-		
+
 		auto removeContext(Rml::Context* context) {
 			RmlGui::MarkContextForRemoval(context);
 		}
@@ -99,11 +99,19 @@ namespace Rml::SolLua
 		}
 	}
 
+	
 	void bind_global(sol::table& namespace_table, SolLuaPlugin* slp)
 	{
 		auto translationTable = &slp->translationTable;
 		namespace_table.set(
-			// M
+			/***
+			 * Create a new context.
+			 * 
+			 * @function RmlUi.CreateContext
+			 * 
+			 * @param name string
+			 * @return RmlContext? nil if failed.
+			 */
 			"CreateContext", [slp](const Rml::String& name) {
 				// context will be resized right away by other code
 				// send {0, 0} in to avoid triggering a pointless resize event in the Rml code
@@ -113,34 +121,322 @@ namespace Rml::SolLua
 				}
 				return context;
 			},
+			/***
+			 * Remove a context.
+			 * 
+			 * @function RmlUi.RemoveContext
+			 * 
+			 * @param context string|RmlContext
+			 */
 			"RemoveContext", sol::overload(
 				&functions::removeContext,
 				&functions::removeContextByName
 			),
+			/***
+			 * Load a font face.
+			 * 
+			 * @function RmlUi.LoadFontFace
+			 * 
+			 * @param file_path string
+			 * @param fallback boolean 
+			 * @param weight number
+			 */
 			"LoadFontFace", sol::overload(
 				&functions::loadFontFace1,
 				&functions::loadFontFace2,
 				&functions::loadFontFace3
 			),
 			//"RegisterTag",
-			//--
+			/***
+			 * Get a context by name. 
+			 * 
+			 * @function RmlUi.GetContext 
+			 * 
+			 * @param name string
+			 * @return RmlContext? nil if failed.
+			 */
 			"GetContext", sol::resolve<Rml::Context* (const Rml::String&)>(&RmlGui::GetContext),
+
+			/***
+			 * @alias RmlEventID
+			 * | 0 # Invalid
+			 * | 1 # Mousedown
+			 * | 2 # Mousescroll
+			 * | 3 # Mouseover
+			 * | 4 # Mouseout
+			 * | 5 # Focus
+			 * | 6 # Blur
+			 * | 7 # Keydown
+			 * | 8 # Keyup
+			 * | 9 # Textinput
+			 * | 10 # Mouseup
+			 * | 11 # Click
+			 * | 12 # Dblclick
+			 * | 13 # Load
+			 * | 14 # Unload
+			 * | 15 # Show
+			 * | 16 # Hide
+			 * | 17 # Mousemove
+			 * | 18 # Dragmove
+			 * | 19 # Drag
+			 * | 20 # Dragstart
+			 * | 21 # Dragover
+			 * | 22 # Dragdrop
+			 * | 23 # Dragout
+			 * | 24 # Dragend
+			 * | 25 # Handledrag
+			 * | 26 # Resize
+			 * | 27 # Scroll
+			 * | 28 # Animationend
+			 * | 29 # Transitionend
+			 * | 30 # Change
+			 * | 31 # Submit
+			 * | 32 # Tabchange
+			 * | 33 # NumDefinedIDs
+			 * | integer # Custom ID
+			 */
+
+			/***
+			 * Register a new event type.
+			 * 
+			 * @function RmlUi.RegiserEventType
+			 * 
+			 * @param event_type string
+			 * @param interruptible boolean?
+			 * @param bubbles boolean?
+			 * @param default_phase RmlDefaultActionPhase?
+			 * @param RmlEventID
+			 */
 			"RegisterEventType", sol::overload(&functions::registerEventType4, &functions::registerEventType3),
+			/***
+			 * Add a translation string.
+			 * 
+			 * @function RmlUi.AddTranslationString
+			 * 
+			 * @param key string
+			 * @param translation string
+			 * @return boolean success
+			 */
 			"AddTranslationString", [translationTable](const Rml::String& key, const Rml::String& translation, sol::this_state s) {
 				return translationTable->addTranslation(key, translation);
 			},
+			/***
+			 * Clear registered translations.
+			 * 
+			 * @function RmlUi.ClearTranslations
+			 */
 			"ClearTranslations", [translationTable](sol::this_state s) {
 				return translationTable->clear();
 			},
+			/***
+			 * Converts the css names for cursors to the Recoil Engine names for cursors like `RmlUi.SetMouseCursorAlias("pointer", 'Move')`.
+			 * Web devs tend to want to use specific words for pointer types.
+			 * 
+			 * @function RmlUi.SetMouseCursorAlias
+			 * 
+			 * @param rml_name string name used in rml script
+			 * @param recoil_name string name used in recoil
+			 */
 			"SetMouseCursorAlias", &RmlGui::SetMouseCursorAlias,
+			/***
+			 * Set which context the debug inspector is meant to inspect.
+			 * 
+			 * @function RmlUi.SetDebugContext
+			 * 
+			 * @param context string | RmlContext
+			 */
 			"SetDebugContext", sol::overload(&functions::setDebugContext, &functions::setDebugContextByName),
+
+			/***
+			 * Global functions for Recoil's RmlUi implementation. 
+			 * @class RmlUi
+			 * @field contexts RmlCOntext[]
+			 * @field version string RmlUi version
+			 */
 
 			// G
 			"contexts", sol::readonly_property(&getIndexedTable<Rml::Context, &functions::getContext, &functions::getMaxContexts>),
 			//--
 			"version", sol::readonly_property(&Rml::GetVersion)
 		);
-
+		/***
+		 * @alias RMLKeyIdentifier
+		 * | "UNKNOWN"
+		 * | "SPACE"
+		 * | "0"
+		 * | "1"
+		 * | "2"
+		 * | "3"
+		 * | "4"
+		 * | "5"
+		 * | "6"
+		 * | "7"
+		 * | "8"
+		 * | "9"
+		 * | "A"
+		 * | "B"
+		 * | "C"
+		 * | "D"
+		 * | "E"
+		 * | "F"
+		 * | "G"
+		 * | "H"
+		 * | "I"
+		 * | "J"
+		 * | "K"
+		 * | "L"
+		 * | "M"
+		 * | "N"
+		 * | "O"
+		 * | "P"
+		 * | "Q"
+		 * | "R"
+		 * | "S"
+		 * | "T"
+		 * | "U"
+		 * | "V"
+		 * | "W"
+		 * | "X"
+		 * | "Y"
+		 * | "Z"
+		 * | "OEM_1"
+		 * | "OEM_PLUS"
+		 * | "OEM_COMMA"
+		 * | "OEM_MINUS"
+		 * | "OEM_PERIOD"
+		 * | "OEM_2"
+		 * | "OEM_3"
+		 * | "OEM_4"
+		 * | "OEM_5"
+		 * | "OEM_6"
+		 * | "OEM_7"
+		 * | "OEM_8"
+		 * | "OEM_102"
+		 * | "NUMPAD0"
+		 * | "NUMPAD1"
+		 * | "NUMPAD2"
+		 * | "NUMPAD3"
+		 * | "NUMPAD4"
+		 * | "NUMPAD5"
+		 * | "NUMPAD6"
+		 * | "NUMPAD7"
+		 * | "NUMPAD8"
+		 * | "NUMPAD9"
+		 * | "NUMPADENTER"
+		 * | "MULTIPLY"
+		 * | "ADD"
+		 * | "SEPARATOR"
+		 * | "SUBTRACT"
+		 * | "DECIMAL"
+		 * | "DIVIDE"
+		 * | "OEM_NEC_EQUAL"
+		 * | "BACK"
+		 * | "TAB"
+		 * | "CLEAR"
+		 * | "RETURN"
+		 * | "PAUSE"
+		 * | "CAPITAL"
+		 * | "KANA"
+		 * | "HANGUL"
+		 * | "JUNJA"
+		 * | "FINAL"
+		 * | "HANJA"
+		 * | "KANJI"
+		 * | "ESCAPE"
+		 * | "CONVERT"
+		 * | "NONCONVERT"
+		 * | "ACCEPT"
+		 * | "MODECHANGE"
+		 * | "PRIOR"
+		 * | "NEXT"
+		 * | "END"
+		 * | "HOME"
+		 * | "LEFT"
+		 * | "UP"
+		 * | "RIGHT"
+		 * | "DOWN"
+		 * | "SELECT"
+		 * | "PRINT"
+		 * | "EXECUTE"
+		 * | "SNAPSHOT"
+		 * | "INSERT"
+		 * | "DELETE"
+		 * | "HELP"
+		 * | "LWIN"
+		 * | "RWIN"
+		 * | "APPS"
+		 * | "POWER"
+		 * | "SLEEP"
+		 * | "WAKE"
+		 * | "F1"
+		 * | "F2"
+		 * | "F3"
+		 * | "F4"
+		 * | "F5"
+		 * | "F6"
+		 * | "F7"
+		 * | "F8"
+		 * | "F9"
+		 * | "F10"
+		 * | "F11"
+		 * | "F12"
+		 * | "F13"
+		 * | "F14"
+		 * | "F15"
+		 * | "F16"
+		 * | "F17"
+		 * | "F18"
+		 * | "F19"
+		 * | "F20"
+		 * | "F21"
+		 * | "F22"
+		 * | "F23"
+		 * | "F24"
+		 * | "NUMLOCK"
+		 * | "SCROLL"
+		 * | "OEM_FJ_JISHO"
+		 * | "OEM_FJ_MASSHOU"
+		 * | "OEM_FJ_TOUROKU"
+		 * | "OEM_FJ_LOYA"
+		 * | "OEM_FJ_ROYA"
+		 * | "LSHIFT"
+		 * | "RSHIFT"
+		 * | "LCONTROL"
+		 * | "RCONTROL"
+		 * | "LMENU"
+		 * | "RMENU"
+		 * | "BROWSER_BACK"
+		 * | "BROWSER_FORWARD"
+		 * | "BROWSER_REFRESH"
+		 * | "BROWSER_STOP"
+		 * | "BROWSER_SEARCH"
+		 * | "BROWSER_FAVORITES"
+		 * | "BROWSER_HOME"
+		 * | "VOLUME_MUTE"
+		 * | "VOLUME_DOWN"
+		 * | "VOLUME_UP"
+		 * | "MEDIA_NEXT_TRACK"
+		 * | "MEDIA_PREV_TRACK"
+		 * | "MEDIA_STOP"
+		 * | "MEDIA_PLAY_PAUSE"
+		 * | "LAUNCH_MAIL"
+		 * | "LAUNCH_MEDIA_SELECT"
+		 * | "LAUNCH_APP1"
+		 * | "LAUNCH_APP2"
+		 * | "OEM_AX"
+		 * | "ICO_HELP"
+		 * | "ICO_00"
+		 * | "PROCESSKEY"
+		 * | "ICO_CLEAR"
+		 * | "ATTN"
+		 * | "CRSEL"
+		 * | "EXSEL"
+		 * | "EREOF"
+		 * | "PLAY"
+		 * | "ZOOM"
+		 * | "PA1"
+		 * | "OEM_CLEAR"
+		 */
 		namespace_table.set("key_identifier", sol::readonly_property([](sol::this_state l) {
 			sol::state_view lua(l);
 			sol::table t = lua.create_table();
@@ -325,7 +621,9 @@ namespace Rml::SolLua
 
 			return t;
 		}));
-
+		/***
+		 * @alias RmlKeyModifier "CTRL" | "SHIFT" | "ALT" | "META" | "CAPSLOCK" "NUMLOCK" | "SCROLLOCK"
+		 */
 		namespace_table.set("key_modifier", sol::readonly_property([](sol::this_state l) {
 			sol::state_view lua(l);
 			return lua.create_table_with(
@@ -338,7 +636,9 @@ namespace Rml::SolLua
 				 "SCROLLLOCK", Rml::Input::KM_SCROLLLOCK
 			);
 		}));
-
+		/***
+		 * @alias RmlFontWeight "Auto" | "Normal" | "Bold"
+		 */
 		namespace_table.set("font_weight", sol::readonly_property([](sol::this_state l) {
 			sol::state_view lua(l);
 			return lua.create_table_with(
@@ -347,7 +647,9 @@ namespace Rml::SolLua
 				"Bold", Rml::Style::FontWeight::Bold
 			);
 		}));
-
+		/***
+		 * @alias RmlDefaultActionPhase "None" | "Target" | "TargetAndBubble"
+		 */
 		namespace_table.set("default_action_phase", sol::readonly_property([](sol::this_state l) {
 			sol::state_view lua(l);
 			return lua.create_table_with(
