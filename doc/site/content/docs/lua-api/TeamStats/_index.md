@@ -1,0 +1,326 @@
+---
+title: "TeamStats"
+permalink: "docs/lua-api/types/TeamStats"
+---
+# class TeamStats
+
+
+
+
+
+[<a href="https://github.com/SlashScreen/RecoilEngine/blob/b16b1e4d2ec4d049d46e390398a33d9a3dd46f0c/rts/Lua/LuaSyncedRead.cpp#L1977-L1999" target="_blank">source</a>]
+
+
+
+
+
+
+
+---
+
+
+
+## fields
+---
+
+### TeamStats.time
+---
+```lua
+TeamStats.time : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.frame
+---
+```lua
+TeamStats.frame : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.metalUsed
+---
+```lua
+TeamStats.metalUsed : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.metalProduced
+---
+```lua
+TeamStats.metalProduced : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.metalExcess
+---
+```lua
+TeamStats.metalExcess : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.metalReceived
+---
+```lua
+TeamStats.metalReceived : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.metalSent
+---
+```lua
+TeamStats.metalSent : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.energyUsed
+---
+```lua
+TeamStats.energyUsed : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.energyProduced
+---
+```lua
+TeamStats.energyProduced : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.energyExcess
+---
+```lua
+TeamStats.energyExcess : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.energyReceived
+---
+```lua
+TeamStats.energyReceived : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.energySent
+---
+```lua
+TeamStats.energySent : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.damageDealt
+---
+```lua
+TeamStats.damageDealt : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.damageReceived
+---
+```lua
+TeamStats.damageReceived : number
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsProduced
+---
+```lua
+TeamStats.unitsProduced : integer
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsDied
+---
+```lua
+TeamStats.unitsDied : integer
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsReceived
+---
+```lua
+TeamStats.unitsReceived : integer
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsSent
+---
+```lua
+TeamStats.unitsSent : integer
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsCaptured
+---
+```lua
+TeamStats.unitsCaptured : integer
+```
+
+
+
+
+
+
+
+
+
+
+### TeamStats.unitsOutCaptured
+---
+```lua
+TeamStats.unitsOutCaptured : integer
+```
+
+
+
+
+
+
+
+
+
+
+
