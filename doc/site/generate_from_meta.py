@@ -47,8 +47,6 @@ def hugoify(dir: str):
 
 def execute():
     hugoify(temp_md_path)
-    shutil.rmtree(temp_md_path)
-    shutil.rmtree(meta_files_path)
 
 
 if __name__ == "__main__":
