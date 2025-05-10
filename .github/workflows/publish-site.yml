@@ -26,7 +26,7 @@ jobs:
         run: |
           bash doc/site/scripts/get_release_data.sh
           bash doc/site/scripts/get_engine_data.sh
-          git add -f doc/site/_data
+          git add -f doc/site/data
       # NOTE: This step is duplicated in `generate-lua-library.yml`
       - name: Generate Lua library
         run: |
