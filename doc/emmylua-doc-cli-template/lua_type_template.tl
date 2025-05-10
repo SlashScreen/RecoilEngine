@@ -6,9 +6,7 @@ permalink: "docs/lua-api/types/{{ doc.name }}"
 
 {% if doc.supers %}
 - inherits: 
-```lua
 {{ doc.supers }}
-```
 {% endif %}
 {% if doc.namespace %}
 - namespace: {{ doc.namespace }}
