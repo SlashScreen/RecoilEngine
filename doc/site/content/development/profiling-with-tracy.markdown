@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Profiling with Tracy
-parent: Development
-permalink: development/profiling-with-tracy
 author: beherith
 ---
 
