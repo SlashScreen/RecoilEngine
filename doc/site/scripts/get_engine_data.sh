@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-DATA_DIR="$SCRIPT_DIR/../_data"
+DATA_DIR="$SCRIPT_DIR/../data"
 DATA_FILE="$DATA_DIR/latest_release.json"
 WORK_DIR="$SCRIPT_DIR/tmp"
 CONFIG_FILE="$DATA_DIR/configs.json"

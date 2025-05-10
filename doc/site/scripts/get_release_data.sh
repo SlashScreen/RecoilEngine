@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-DATA_FILE="$SCRIPT_DIR/../_data/latest_release.json"
+DATA_FILE="$SCRIPT_DIR/../data/latest_release.json"
 
 echo "> writing $DATA_FILE"
 
