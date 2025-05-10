@@ -1,8 +1,5 @@
 ---
-layout: default
 title: The select command
-parent: Articles
-permalink: /articles/select-command/
 ---
 
 # The `select` command

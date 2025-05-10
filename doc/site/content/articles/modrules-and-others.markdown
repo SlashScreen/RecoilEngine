@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Modrules and (un)related concepts
-parent: Articles
-permalink: articles/modrules-and-others
 author: sprunk
 ---
 

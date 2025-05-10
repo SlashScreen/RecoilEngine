@@ -1,8 +1,5 @@
 ---
-layout: post
 title: "Unit defs"
-parent: Articles
-permalink: articles/unit-defs
 author: sprunk
 ---
 

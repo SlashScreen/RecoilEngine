@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Release 2025.01
-parent: Changelogs
-permalink: changelogs/changelog-2025-01-6
 author: sprunk
 ---
 

@@ -1,8 +1,5 @@
 ---
-layout: post
 title: VFS Basics
-parent: Articles
-permalink: articles/vfs-basics
 author: sprunk
 ---
 

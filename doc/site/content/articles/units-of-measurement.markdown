@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Units of measurement
-parent: Articles
-permalink: articles/units-of-measurement
 author: sprunk
 ---
 

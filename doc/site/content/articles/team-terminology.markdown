@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Team terminology
-parent: Articles
-permalink: articles/team-terminology
 author: sprunk
 ---
 

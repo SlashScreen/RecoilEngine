@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Yardmaps and map squares
-parent: Articles
-permalink: articles/yardmaps
 author: sprunk
 ---
 

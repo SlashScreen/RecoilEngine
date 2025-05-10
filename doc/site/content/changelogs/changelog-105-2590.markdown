@@ -1,8 +1,5 @@
 ---
-layout: post
 title: Release 105-2590
-parent: Changelogs
-permalink: changelogs/changelog-105-2590
 author: sprunk
 ---
 
