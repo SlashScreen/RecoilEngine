@@ -1,0 +1,14 @@
+{{ $nonCoders := site.Data.non_coder_contributors }}
+{{ $coders := site.Data.github_contributors }}
+{{ $allContributors := append $nonCoders $coders }}
+{{ $shuffled := shuffle $allContributors }}
+
+<ul style="list-style-type: none; ">
+    {{ range $shuffled }}
+    <li style="display: inline-block;">
+        <a href="{{ .html_url }}">
+            <img src="{{ .avatar_url }}" width="48" height="48" alt="{{ .login }}">
+        </a>
+    </li>
+    {{ end }}
+</ul>
