@@ -16,6 +16,7 @@
 	"${CMAKE_CURRENT_SOURCE_DIR}/plugin/SolLuaEventListener.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/plugin/SolLuaInstancer.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/plugin/SolLuaPlugin.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/plugin/SolLuaContext.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/RmlSolLua.cpp"
 	PARENT_SCOPE
 )
