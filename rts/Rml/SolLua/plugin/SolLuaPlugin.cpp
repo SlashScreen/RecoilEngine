@@ -38,7 +38,6 @@
 
 #include <algorithm>
 
-
 namespace Rml::SolLua
 {
 	SolLuaPlugin::SolLuaPlugin(sol::state_view lua_state)
@@ -46,9 +45,30 @@ namespace Rml::SolLua
 	{
 	}
 
-	SolLuaPlugin::SolLuaPlugin(sol::state_view lua_state, const Rml::String& lua_environment_identifier)
+	SolLuaPlugin::SolLuaPlugin(sol::state_view lua_state, const Rml::String &lua_environment_identifier)
 		: m_lua_state{lua_state}, m_lua_env_identifier{lua_environment_identifier}
 	{
+	}
+
+	void SolLuaPlugin::RegisterLua(sol::state_view *state)
+	{
+		/***
+		 * Global functions for Recoil's RmlUi implementation.
+		 * @table RmlUi
+		 */
+		sol::table namespace_table = state->create_named_table("RmlUi");
+
+		bind_color(namespace_table);
+		bind_context(namespace_table, slp);
+		bind_datamodel(namespace_table);
+		bind_element(namespace_table);
+		bind_element_derived(namespace_table);
+		bind_element_form(namespace_table);
+		bind_document(namespace_table);
+		bind_event(namespace_table);
+		bind_global(namespace_table, this);
+		bind_vector(namespace_table);
+		bind_convert(namespace_table);
 	}
 
 	int SolLuaPlugin::GetEventClasses()
@@ -56,27 +76,34 @@ namespace Rml::SolLua
 		return EVT_BASIC | EVT_DOCUMENT;
 	}
 
-	void SolLuaPlugin::AddContextTracking(Context* context) {
+	void SolLuaPlugin::AddContextTracking(Context *context)
+	{
 		luaContexts.emplace_back(context);
 	}
 
-	void SolLuaPlugin::OnContextDestroy(Context* context) {
+	void SolLuaPlugin::OnContextDestroy(Context *context)
+	{
 		luaContexts.erase(std::remove(luaContexts.begin(), luaContexts.end(), context), luaContexts.end());
 	}
 
-	void SolLuaPlugin::AddDocumentTracking(ElementDocument* document) {
+	void SolLuaPlugin::AddDocumentTracking(ElementDocument *document)
+	{
 		luaDocuments.emplace_back(document);
 	}
 
-	void SolLuaPlugin::OnDocumentUnload(ElementDocument* document) {
+	void SolLuaPlugin::OnDocumentUnload(ElementDocument *document)
+	{
 		luaDocuments.erase(std::remove(luaDocuments.begin(), luaDocuments.end(), document), luaDocuments.end());
 	}
 
-	void SolLuaPlugin::RemoveLuaItems(){
-		for(auto d: luaDocuments) {
+	void SolLuaPlugin::RemoveLuaItems()
+	{
+		for (auto d : luaDocuments)
+		{
 			d->Close();
 		}
-		for(auto c: luaContexts) {
+		for (auto c : luaContexts)
+		{
 			RmlGui::MarkContextForRemoval(c);
 		}
 	}
